@@ -28,8 +28,6 @@ client.once("ready", () => {
 });
 
 client.on("messageCreate", message => {
-    message.delete();
-
     let author = "<@!" + message.author.id + ">";
 
     if(message.author.username == "WohlstandCentralBank") {
@@ -56,6 +54,8 @@ client.on("messageCreate", message => {
         // }
 
         case "!pay": {
+            message.delete();
+
             let payee = author;
             let payee_account = getAccount(payee);
 
