@@ -1,0 +1,3 @@
+**Commands**
+-   `!pay <discord_username> <amount>`
+-   `!balance` Displays your current balance
