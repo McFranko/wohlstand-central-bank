@@ -1,14 +1,6 @@
 const Discord = require("discord.js");
 const fs = require("fs");
 
-process.on('uncaughtException', err => {
-  console.error('There was an uncaught error', err)
-})
-
-if(!fs.existsSync("./accounts")) {
-    fs.mkdirSync("./accounts");
-}
-
 const helpMessage = fs.readFileSync("./help").toString();
 const admins = JSON.parse(fs.readFileSync("./admins.json"));
 
@@ -23,126 +15,165 @@ const client = new Discord.Client(
     }
 );
 
+if(!fs.existsSync("./accounts")) {
+    fs.mkdirSync("./accounts");
+}
+
 client.once("ready", () => {
-    console.log("ready");
+    console.log("Bot Online");
 });
 
-client.on("messageCreate", message => {
-    let author = "<@!" + message.author.id + ">";
+client.on("messageCreate", async function(message) {
+    try {
+        let author = "<@!" + message.author.id + ">";
 
-    if(message.author.username == "WohlstandCentralBank") {
-        return;
-    }
-
-    if(message.content.charAt(0) != "!") {
-        return;
-    }
-
-    let commandAndArgs = message.content.split(" ");
-
-    console.log("received command " + commandAndArgs + " from " + author);
-
-    switch(commandAndArgs[0]) {
-        case "!help": {
-            message.channel.send(helpMessage).catch(console.error);
-            break;
+        if(!message.content.startsWith("w!")) {
+            return;
         }
 
-        // case "!dm": {
-        //     message.author.send("You can now make transactions with me! If in the future you find transactions aren't working through DMs, use the `!dm` command again!");
-        //     break;
-        // }
+        let commandAndArgs = message.content.split(" ");
 
-        case "!pay": {
-            message.delete();
+        console.log("received command " + commandAndArgs + " from " + author);
 
-            let payee = author;
-            let payee_account = getAccount(payee);
-
-            let recipient = commandAndArgs[1];
-            let recipient_account = getAccount(recipient);
-
-
-            let amount = parseInt(commandAndArgs[2]);
-
-            if(payee_account.balance - amount < 0) {
-                message.author.send("Not enough balance!").catch(console.error);
+        switch(commandAndArgs[1]) {
+            case "help": {
+                message.channel.send(helpMessage).catch(console.error);
                 break;
             }
 
-            recipient_account.balance += amount;
-            saveAccount(recipient_account);
+            // case "!dm": {
+            //     message.author.send("You can now make transactions with me! If in the future you find transactions aren't working through DMs, use the `!dm` command again!");
+            //     break;
+            // }
 
-            payee_account.balance -= amount;
-            saveAccount(payee_account);
+            case "pay": {
+                message.delete();
 
-            message.author.send("Payed " + recipient + " " + amount + "$");
+                let payee_account = getAccount(author);
 
-            let recipient_user = client
-                .users
-                .fetch(recipient.replace(/[^0-9.]/g, ""))
+                let recipient = commandAndArgs[2];
+                if(recipient == undefined) {
+                    message.author.send("Please specify a recipient! Use `w! help` if you're confused");
+                    break;
+                }
 
-            recipient_user.then(user => {
-                user
-                    .send("Received " + amount + "$ from " + message.author.username);
-            });
+                let recipient_account = getAccount(recipient);
 
-            break;
-        }
 
-        case "!balance": {
-            let account = getAccount(author);
-            message
-                .author
-                .send("You have " + account.balance.toString() + "$")
-                .catch(console.error);
+                let amount = parseInt(commandAndArgs[3]);
+                if(amount == NaN || amount < 0) {
+                    amount = 0;
+                }
 
-            message.delete().catch(console.error);
+                if(payee_account.balance - amount < 0) {
+                    message.author.send("Not enough balance!");
+                    break;
+                }
 
-            break;
-        }
-        
-        case "!setBal": {
-            if(!admins.includes(author)) {
+                recipient_account.balance += amount;
+                saveAccount(recipient_account);
+
+                payee_account.balance -= amount;
+                saveAccount(payee_account);
+
+                let recipient_user = await client
+                    .users 
+                    .fetch(recipient.replace(/[^0-9.]/g, ""));
+                    // removes characters which aren't numbers in order to get discord id
+
+                message.author.send("Payed " + recipient_user.username + " " + amount + "Ð").catch(console.error);
+
+                recipient_user.send("Received " + amount + "Ð from " + message.author.username).catch(console.error);
+
+                let now = new Date();
+
+                fs.appendFileSync(
+                    "./log",
+                    now + ": " + message.author.username + " payed " + recipient_user.username + " "+ amount + "\n"
+                );
+
+                break;
+            }
+
+            case "balance": {
+                let account = getAccount(author);
+
                 message
-                    .channel
-                    .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
+                    .author
+                    .send("You have " + `${account.balance}` + "Ð");
+
+                message.delete();
+
                 break;
             }
+            
+            case "setBal": {
+                if(!admins.includes(author)) {
+                    message
+                        .channel
+                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
+                    break;
+                }
 
-            let recipient = commandAndArgs[1];
-            let amount = parseInt(commandAndArgs[2]);
+                let recipient = commandAndArgs[2];
+                let amount = parseInt(commandAndArgs[3]);
 
-            let account = getAccount(recipient);
-            account.balance = amount;
-            saveAccount(account);
+                let account = getAccount(recipient);
+                account.balance = amount;
+                saveAccount(account);
 
-            message
-                .author
-                .send("Set " + recipient + "'s balance to " + account.balance)
-                .catch(console.error);
-
-            break;
-        }
-
-        case "!balanceOf": {
-            if(!admins.includes(author)) {
                 message
-                    .channel
-                    .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
+                    .author
+                    .send("Set " + recipient + "'s balance to " + account.balance);
+
+                message.delete();
+
                 break;
             }
 
-            let subject = commandAndArgs[1];
-            let account = getAccount(subject);
+            case "changeBal": {
+                if(!admins.includes(author)) {
+                    message
+                        .channel
+                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
+                    break;
+                }
 
-            message
-                .author
-                .send(subject + "'s balance is " + account.balance + "$")
-                .catch(console.error);
+                let recipient = commandAndArgs[2];
+                let recipient_account = getAccount(recipient);
 
-            break;
+                let amount = parseInt(commandAndArgs[3]);
+                if(amount == NaN || amount < 0) {
+                    amount = 0;
+                }
+
+                recipient_account.balance += amount;
+
+                message.author.send(recipient + "'s account balance is now " + recipient_account.balance.stringify());
+            }
+
+            case "balanceOf": {
+                if(!admins.includes(author)) {
+                    message
+                        .channel
+                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
+                    break;
+                }
+
+                let subject = commandAndArgs[2];
+                let account = getAccount(subject);
+
+                message
+                    .author
+                    .send(subject + "'s balance is " + account.balance + "Ð");
+
+                message.delete();
+
+                break;
+            }
         }
+    } catch(error) {
+        console.error(error);
     }
 });
 
