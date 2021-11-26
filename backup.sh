@@ -1,2 +1,9 @@
+#!/bin/sh
+
 mkdir backups
-tar -cvf "backups/$(date) accounts.tar.gz" accounts
+
+DAY_OF_WEEK=$(date +"%w")
+
+mkdir "backups/${DAY_OF_WEEK}"
+
+tar -cvf "backups/${DAY_OF_WEEK}/$(date) accounts.tar.gz" accounts
