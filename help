@@ -1,3 +1,4 @@
 **Commands**
--   `!pay <discord_username> <amount>`
--   `!balance` Displays your current balance
+-   `w! help` Displays this message
+-   `w! pay <discord_username> <amount>`
+-   `w! balance` Displays your current balance
