@@ -27,7 +27,7 @@ client.on("messageCreate", async function(message) {
     try {
         let author = "<@!" + message.author.id + ">";
 
-        if(!message.content.startsWith("w!")) {
+        if(!message.content.startsWith("w! ")) {
             return;
         }
 
@@ -47,7 +47,7 @@ client.on("messageCreate", async function(message) {
             // }
 
             case "pay": {
-                message.delete();
+                message.delete().catch(console.error);
 
                 let payee_account = getAccount(author);
 
