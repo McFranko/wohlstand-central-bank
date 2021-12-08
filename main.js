@@ -11,7 +11,8 @@ const client = new Discord.Client(
             Discord.Intents.FLAGS.GUILD_MESSAGES,
             Discord.Intents.FLAGS.GUILD_MEMBERS,
             Discord.Intents.FLAGS.DIRECT_MESSAGES
-        ]
+        ],
+        partials: ["CHANNEL"]
     }
 );
 
@@ -19,163 +20,224 @@ if(!fs.existsSync("./accounts")) {
     fs.mkdirSync("./accounts");
 }
 
-client.once("ready", () => {
+client.once("ready", function() {
     console.log("Bot Online");
 });
 
+client.on("guildMemberUpdate", async function(member) {
+    await member.fetch();
+});
+
 client.on("messageCreate", async function(message) {
-    try {
-        let author = "<@!" + message.author.id + ">";
+    let author = "<@!" + message.author.id + ">";
 
-        if(!message.content.startsWith("w! ")) {
-            return;
+    if(!message.content.startsWith("w! ")) {
+        return;
+    }
+
+    let commandAndArgs = message.content.split(" ");
+
+    console.log("received command " + commandAndArgs + " from " + author);
+
+    switch(commandAndArgs[1]) {
+        case "help": {
+            message.reply(helpMessage).catch(console.error);
+            break;
         }
 
-        let commandAndArgs = message.content.split(" ");
+        case "init": {
+            await message.guild.members.fetch();
 
-        console.log("received command " + commandAndArgs + " from " + author);
+            break;
+        }
 
-        switch(commandAndArgs[1]) {
-            case "help": {
-                message.channel.send(helpMessage).catch(console.error);
-                break;
-            }
+        case "test": {
+            break;
+        }
 
-            // case "!dm": {
-            //     message.author.send("You can now make transactions with me! If in the future you find transactions aren't working through DMs, use the `!dm` command again!");
-            //     break;
-            // }
+        case "pay": {
+            let payee = message.author;
 
-            case "pay": {
-                message.delete().catch(console.error);
-
-                let payee_account = getAccount(author);
-
-                let recipient = commandAndArgs[2];
-                if(recipient == undefined) {
-                    message.author.send("Please specify a recipient! Use `w! help` if you're confused");
-                    break;
-                }
-
-                let recipient_account = getAccount(recipient);
-
-
-                let amount = parseInt(commandAndArgs[3]);
-                if(amount == NaN || amount < 0) {
-                    amount = 0;
-                }
-
-                if(payee_account.balance - amount < 0) {
-                    message.author.send("Not enough balance!");
-                    break;
-                }
-
-                recipient_account.balance += amount;
-                saveAccount(recipient_account);
-
-                payee_account.balance -= amount;
-                saveAccount(payee_account);
-
-                let recipient_user = await client
-                    .users 
-                    .fetch(recipient.replace(/[^0-9.]/g, ""));
-                    // removes characters which aren't numbers in order to get discord id
-
-                message.author.send("Payed " + recipient_user.username + " " + amount + "Ð").catch(console.error);
-
-                recipient_user.send("Received " + amount + "Ð from " + message.author.username).catch(console.error);
-
-                let now = new Date();
-
-                fs.appendFileSync(
-                    "./log",
-                    now + ": " + message.author.username + " payed " + recipient_user.username + " "+ amount + "\n"
+            let recipientUsername;
+            try {
+                recipientUsername = getUsernameFromCommand(message.content, 2);
+            } catch(error) {
+                console.log(error);
+                message.reply(
+                    "Could not find the recipient's username! Use `w! help` if you need help"
                 );
-
-                break;
+                return;
             }
 
-            case "balance": {
-                let account = getAccount(author);
+            let recipient;
+            try {
+                recipient = getUserFromUsername(recipientUsername);
+            } catch(error) {
+                console.log(error);
 
-                message
-                    .author
-                    .send("You have " + `${account.balance}` + "Ð");
-
-                message.delete();
-
-                break;
+                message.reply(
+                    "Could not find a user by the name \"" + recipientUsername + "\""
+                );
+                return;
             }
-            
-            case "setBal": {
-                if(!admins.includes(author)) {
-                    message
-                        .channel
-                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
-                    break;
+
+            let amount_str = commandAndArgs[commandAndArgs.length - 1];
+            let amount = parseInt(amount_str);
+            if(isNaN(amount) || amount < 0) {
+                message.reply(amount_str + " is not a valid payment amount");
+                return;
+            }
+
+            try {
+                pay(recipient, amount, payee);
+
+                message.reply(
+                    "Payed " + 
+                    recipient.username + 
+                    " " + 
+                    amount + 
+                    "Ð"
+                ).catch(console.error);
+
+                recipient.send("Recieved " + amount + "Ð from " + payee.username);
+            } catch(error) {
+                console.log(error);
+
+                if(error == "Insufficient Balance") {
+
+                    message.reply("You do not have enough balance!").catch(console.error);
                 }
-
-                let recipient = commandAndArgs[2];
-                let amount = parseInt(commandAndArgs[3]);
-
-                let account = getAccount(recipient);
-                account.balance = amount;
-                saveAccount(account);
-
-                message
-                    .author
-                    .send("Set " + recipient + "'s balance to " + account.balance);
-
-                message.delete();
-
-                break;
             }
 
-            case "changeBal": {
-                if(!admins.includes(author)) {
-                    message
-                        .channel
-                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
-                    break;
-                }
-
-                let recipient = commandAndArgs[2];
-                let recipient_account = getAccount(recipient);
-
-                let amount = parseInt(commandAndArgs[3]);
-                if(amount == NaN || amount < 0) {
-                    amount = 0;
-                }
-
-                recipient_account.balance += amount;
-
-                message.author.send(recipient + "'s account balance is now " + recipient_account.balance.stringify());
-            }
-
-            case "balanceOf": {
-                if(!admins.includes(author)) {
-                    message
-                        .channel
-                        .send("You must be an admin to execute that command! This incident has been reported, and you should be ashamed of yourself.");
-                    break;
-                }
-
-                let subject = commandAndArgs[2];
-                let account = getAccount(subject);
-
-                message
-                    .author
-                    .send(subject + "'s balance is " + account.balance + "Ð");
-
-                message.delete();
-
-                break;
-            }
+            break;
         }
-    } catch(error) {
-        console.error(error);
+
+        case "balance": {
+            let account = getAccount(message.author.id);
+
+            message.reply("You have " + `${account.balance}` + "Ð")
+
+            break;
+        }
+
+        case "setBal": {
+            let recipientUsername;
+            try {
+                recipientUsername = getUsernameFromCommand(message.content, 2);
+            } catch(error) {
+                console.log(error);
+                message.reply(
+                    "Could not find the recipient's username! Use `w! help` if you need help"
+                );
+                return;
+            }
+
+            let recipient;
+            try {
+                recipient = getUserFromUsername(recipientUsername);
+            } catch(error) {
+                console.log(error);
+
+                message.reply(
+                    "Could not find a user by the name \"" + recipientUsername + "\""
+                );
+                return;
+            }
+
+            let amount_str = commandAndArgs[commandAndArgs.length - 1];
+            let amount = parseInt(amount_str);
+            if(isNaN(amount) || amount < 0) {
+                message.reply(amount_str + " is not a valid amount");
+                return;
+            }
+
+            let account = getAccount(recipient.id);
+            account.balance = amount;
+            saveAccount(account);
+
+            message
+                .reply("Set " + recipientUsername + "'s balance to " + account.balance);
+
+            break;
+        }
+
+        case "balanceOf": {
+            let subjectUsername;
+            try {
+                subjectUsername = getUsernameFromCommand(message.content, 2);
+            } catch(error) {
+                console.log(error);
+                message.reply(
+                    "Could not find the subject's username!"
+                );
+                return;
+            }
+
+            let subject;
+            try {
+                subject = getUserFromUsername(subjectUsername);
+            } catch(error) {
+                console.log(error);
+
+                message.reply(
+                    "Could not find a user by the name \"" + subjectUsername + "\""
+                );
+                return;
+            }
+
+            let account = getAccount(subject.id);
+
+            message.reply(
+                subject.username + "'s balance is " + account.balance + "Ð"
+            );
+
+            break;
+        }
     }
 });
+
+function pay(recipient, amount, payee) {
+    let recipient_account = getAccount(recipient.id);
+    let payee_account = getAccount(payee.id);
+
+    if(payee_account.balance < amount) {
+        throw "Insufficient Balance";
+    }
+
+    recipient_account.balance += amount;
+    payee_account.balance -= amount;
+
+    saveAccount(recipient_account);
+    saveAccount(payee_account);
+}
+
+function getUsernameFromCommand(command, username_index) {
+    // Get username that is inside quotes
+    let recipientUsername = command.split("\"")[1];
+
+    if(recipientUsername == undefined) {
+        let commandAndArgs = command.split(" ");
+        recipientUsername = commandAndArgs[username_index];
+
+        if(recipientUsername == undefined) {
+            throw "Couldn't find username";
+        }
+    }
+
+    return recipientUsername;
+}
+
+function getUserFromUsername(username) {
+    let recipient = client.users.cache.find(
+        user => user.username.toLowerCase() == username.toLowerCase()
+    );
+
+    if(recipient == undefined) {
+        throw "Could not find a user by the name \"" + recipientUsername + "\"";
+    }
+
+    return recipient;
+}
 
 function getAccount(name) {
     let account_path = getAccountPath(name);
