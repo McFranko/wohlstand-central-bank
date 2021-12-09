@@ -99,7 +99,7 @@ client.on("messageCreate", async function(message) {
                     "Ð"
                 ).catch(console.error);
 
-                recipient.send("Recieved " + amount + "Ð from " + payee.username);
+                recipient.send("Recieved " + amount + "Ð from " + payee.username).catch(console.error);
             } catch(error) {
                 console.log(error);
 
